@@ -46,3 +46,11 @@ stage("argocd-deploy") {
         }
     }
 }
+
+
+
+
+==========================
+What is --grpc-web?
+It tells argocd CLI to use gRPC-Web protocol for communication with the ArgoCD API server.
+ArgoCD supports both gRPC and REST, but gRPC-Web is often used when connecting through a reverse proxy (like Nginx or AWS ALB).
