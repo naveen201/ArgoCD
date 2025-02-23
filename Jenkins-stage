@@ -1,0 +1,48 @@
+stage("argocd-deploy") {
+    steps {
+        withCredentials([string(credentialsId: 'argocd-password-id', variable: 'ARGO_PASS')]) {
+            script {
+                def rollbackDeployment = {
+                    sh "argocd login ${argo_server} --username ${argo_username} --password ${ARGO_PASS} --grpc-web"
+
+                    def previousRevision = sh(
+                        script: "argocd app history ${application} --output json --grpc-web | awk 'NR==10{print $1}'",
+                        returnStdout: true
+                    ).trim()
+
+                    sh "argocd app rollback ${application} ${previousRevision} --grpc-web"
+                    sleep(40)
+                    sh "argocd app wait --health ${application} --timeout 100 --grpc-web"
+                }
+
+                try {
+                    // Login to ArgoCD securely
+                    sh "argocd login ${argo_server} --username ${argo_username} --password ${ARGO_PASS} --grpc-web"
+
+                    // Create or update the ArgoCD application
+                    sh """
+                        argocd app create ${application} \
+                        --project ${project} \
+                        --repo ${argorepo} \
+                        --path ${helm_dir} \
+                        --revision ${cd_branch} \
+                        --dest-namespace ${namespace} \
+                        --dest-name ${dest_cluster} \
+                        --sync-option auto-createnamespace=true \
+                        --values values-prod.yaml \
+                        --upsert --grpc-web
+                    """
+
+                    // Sync and wait for deployment
+                    sh "argocd app sync ${application} --prune --grpc-web"
+                    sleep(40)
+                    sh "argocd app wait --health ${application} --timeout 100 --grpc-web"
+
+                } catch (Exception e) {
+                    echo "Deployment failed. Performing rollback..."
+                    rollbackDeployment()
+                }
+            }
+        }
+    }
+}
